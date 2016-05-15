@@ -1,9 +1,10 @@
 library(xlsx)
 library(tseries)
 library(corrplot)
+library('car')
 
 # funcs
-addCountable <- function(x){
+addCountable <- function(x,plot_saudi=F){
   l <- nrow(x)
   
   TS14 <- (x$price1-x$price4)/x$price1
@@ -28,11 +29,12 @@ addCountable <- function(x){
   PercentNR <- volumeNR / volume
   PercentS <- volumeS / volume
   PercentH <- volumeH / volume
-  
+  PercentDiff <- PercentS - PercentH
   
   TIndex <- 1+1/volumeC*(x$NoncommercialShort+(x$CommercialLong<x$CommercialShort)*(x$NoncommercialLong-x$NoncommercialShort))
   PNLComm <- OI.Comm / volumeC
   PNLSpec <- OI.Spec / volumeS
+  PNLDiff <- PNLSpec - PNLComm
   
   OpenInterestDiff <- c(NA,diff(x$OpenInterest))
   
@@ -60,21 +62,21 @@ addCountable <- function(x){
   #res <- mar2*(sign(mar2)+1)/2
   
   excess <- data.frame(year=saudi$year,realPrice=marR,fundamentalPrice=mar2)
-  exploreNData(excess,main='Excess of breakeven price, %')
-  
-  exploreNData(saudi[,c(1,5,7)],main='price yearly')
-  exploreNData(saudi[,c(1,2,3)],main='Saudi Arabia budget',legend_position = "topleft")
-  exploreNData(saudi[,c(1,2,5)],main='Saudi Arabia revenue & oil prices dynamics',legend_position = "topleft",normalize = T)
-  exploreNData(saudi[,c(1,2,6)],main='Saudi Arabia revenue & oil revenue dynamics',legend_position = "topleft",normalize = T)
-  exploreNData(saudi[,c(1,4)],main='Saudi Arabia oil production',legend_position = "topleft")
-  plot(saudi[,5],saudi[,2],xlab='Oil price',ylab='Revenue',col='blue',main='Saudi Arabia revenue & oil prices dynamics')
-  plot(saudi[,6],saudi[,2],xlab='Oil revenue',ylab='Revenue',col='blue',main='Saudi Arabia revenue & oil revenue dynamics')
-  
   
   disP1 <- (x$price1 - priceBreakEven1) / priceBreakEven1
   disP2 <- (x$price1 - priceBreakEven2) / priceBreakEven2
-  plot(disP1,type='l',col='blue')
-  lines(disP2,col='red')
+  
+  if (plot_saudi) {
+    exploreNData(excess,main='Excess of breakeven price, %')
+    exploreNData(saudi[,c(1,5,7)],main='price yearly')
+    exploreNData(saudi[,c(1,2,3)],main='Saudi Arabia budget',legend_position = "topleft")
+    exploreNData(saudi[,c(1,2,5)],main='Saudi Arabia revenue & oil prices dynamics',legend_position = "topleft",normalize = T)
+    exploreNData(saudi[,c(1,2,6)],main='Saudi Arabia revenue & oil revenue dynamics',legend_position = "topleft",normalize = T)
+    exploreNData(saudi[,c(1,4)],main='Saudi Arabia oil production',legend_position = "topleft")
+    plot(saudi[,5],saudi[,2],xlab='Oil price',ylab='Revenue',col='blue',main='Saudi Arabia revenue & oil prices dynamics')
+    plot(saudi[,6],saudi[,2],xlab='Oil revenue',ylab='Revenue',col='blue',main='Saudi Arabia revenue & oil revenue dynamics')
+    exploreNData(data.frame(x[,1],disP1,disP2),main='disP1 vs disP2')
+  }
   
   priceBreakEven <- priceBreakEven2
   disP <- disP2
@@ -82,10 +84,9 @@ addCountable <- function(x){
   SSpecDegree <- disP * SpecDegree
   STIndex <- disP * TIndex
   
-  cbind(x,TS14,BalUS,BalWorld,TIndex,PNLComm,PNLSpec,PercentC,PercentNC,PercentNR,PercentH,PercentS,SpecDegree,priceBreakEven,disP,SSpecDegree,STIndex) 
+  cbind(x,TS14,BalUS,BalWorld,TIndex,PNLComm,PNLSpec,PNLDiff,PercentC,PercentNC,PercentNR,PercentH,PercentS,PercentDiff,SpecDegree,disP,SSpecDegree,STIndex) 
 }
 
-namesM <- function(x) cbind(1:ncol(x),colnames(x))
 normalize <- function(x,save_sign=F) {
   if (is.numeric(x))
     if (save_sign==F) (x-min(x,na.rm = T))/(max(x,na.rm = T)-min(x,na.rm = T))
@@ -98,7 +99,7 @@ normalizeM <- function(x,save_sign=F) {
   x
 }
 
-exploreData <- function(x,lPos=(14:21),lCountablesFirst=30){
+exploreData <- function(x,lPos=(14:21),lCountablesFirst=30,corPlotOrder=T){
   exploreNData(main='Positions',ymin=0,x=x[,c(1,lPos)],legend_position = "topleft")
   exploreNData(main='Oil supply & demand, World',ymin=70,x=data.frame(date=x$date,demandWorld=x$demandWorld,supplyWorld=x$supplyWorld))
   exploreNData(main='Oil supply & demand, US',ymin=70,x=data.frame(date=x$date,demandUS=x$demandUS,supplyUS=x$supplyUS))
@@ -113,7 +114,7 @@ exploreData <- function(x,lPos=(14:21),lCountablesFirst=30){
   exploreNData(main='Percents of total open interest',ymin=0,x=x[,c(1,36:38)],legend_position = "left")
   exploreNData(main='disPrice',ymin=0,x=data.frame(date=x$date,disP=x$disP))
   exploreNData(main='S, 2 methods',ymin=0,x=data.frame(date=x$date,S_SpecDegree=x$SSpecDegree,S_TIndex=x$STIndex))
-  corrPlot(x[,c(lCountablesFirst:ncol(x))])
+  corrPlot(x[,c(lCountablesFirst:ncol(x))],order = corPlotOrder)
 }
 corrPlot <- function(x,normalize=T,save_sign=T,precision=1,order=T){
   if (normalize) x <- normalizeM(x,save_sign)
@@ -136,7 +137,7 @@ exploreNData <- function(x,lwd=1,main='',ymin=10000000000,legend_position="botto
   if (ncol(x)==4) col <- c("black","red","blue")
   plot(x[,1],x[,2],type='l',xlab=colnames(x)[1],ylab='',col=col[1],ylim=c(min(x[,-1],ymin,na.rm=T),max(x[,-1],na.rm=T)),lwd=lwd,main=main)
   if (ncol(x)>2) for (i in 3:ncol(x)) lines(x[,1],x[,i],col=col[i-1],lwd=lwd)  
-  if(min(x[,2:ncol(x)],ymin,na.rm=T)<0) lines(x[,1],rep(0,nrow(x)),col='yellow',lty=2)
+  if(min(x[,2:ncol(x)],ymin,na.rm=T)<0) lines(x[,1],rep(0,nrow(x)),col='grey',lty=2)
   legend = colnames(x)[-1]
   if (length(legend) == 0) legend <- as.character(1:(ncol(x)-1))
   legend(x=legend_position, bty="n",col = col,lty = 1, legend = legend,lwd=lwd)
@@ -187,18 +188,18 @@ addMA <- function(x,l,len){
 sPlot <- function(x1,x2,main='',smooth=F,line=F,xlab='',ylab='',square=F) {
   m <- max(abs(x1),abs(x2))
   if (!smooth) 
-    if (square) plot(x1,x2,main=paste0(main,'\nÑorrelation = ',round(cor(x1,x2),2)),xlim=c(-m,m),ylim=c(-m,m),xlab=xlab,ylab=ylab)
-    else  plot(x1,x2,main=paste0(main,'\nÑorrelation = ',round(cor(x1,x2),2)),xlab=xlab,ylab=ylab)
+    if (square) plot(x1,x2,main=paste0(main,'\nÐ¡orrelation = ',round(cor(x1,x2),2)),xlim=c(-m,m),ylim=c(-m,m),xlab=xlab,ylab=ylab)
+    else  plot(x1,x2,main=paste0(main,'\nÐ¡orrelation = ',round(cor(x1,x2),2)),xlab=xlab,ylab=ylab)
   else  
-    if (square) smoothScatter(x1,x2,main=paste0(main,'\nÑorrelation = ',round(cor(x1,x2),2)),xlim=c(-m,m),ylim=c(-m,m),xlab=xlab,ylab=ylab)
-    else  smoothScatter(x1,x2,main=paste0(main,'\nÑorrelation = ',round(cor(x1,x2),2)),xlab=xlab,ylab=ylab)
+    if (square) smoothScatter(x1,x2,main=paste0(main,'\nÐ¡orrelation = ',round(cor(x1,x2),2)),xlim=c(-m,m),ylim=c(-m,m),xlab=xlab,ylab=ylab)
+    else  smoothScatter(x1,x2,main=paste0(main,'\nÐ¡orrelation = ',round(cor(x1,x2),2)),xlab=xlab,ylab=ylab)
   if (line) lines(c(-m,m),c(-m,m),col='red',lty=2)
 }
 scatterPlots <- function(x){
   # scatter
   par(mfrow = c(3,3))
   
-  # îòêðûòûå ïîçèöèè è öåíû
+  # open interests and prices
   sPlot(diff(log(x$price1)),diff(x$NoncommercialLong-x$NoncommercialShort),main='NonCommercial Open Interest changes and log price changes, weekly. ',smooth = T,xlab = 'log(price) change (t)',ylab='Open Interest change')
   sPlot(diff(log(x$price1))[1:(nrow(x)-2)],diff(x$NoncommercialLong-x$NoncommercialShort)[2:(nrow(x)-1)],main='NonCommerical Long changes (t) and log price changes (t-1)',T,xlab='log(price) change (t-1)',ylab = 'Long Position change (t)')
   sPlot(diff(log(x$price1))[2:(nrow(x)-1)],diff(x$NoncommercialLong-x$NoncommercialShort)[1:(nrow(x)-2)],main='NonCommerical Long changes (t-1) and log price changes (t)',T,xlab='log(price) change (t)',ylab = 'Long Position change (t-1)')
@@ -211,7 +212,7 @@ scatterPlots <- function(x){
   sPlot(diff(log(x$price1))[1:(nrow(x)-2)],diff(x$NonreportablePositionsLong-x$NonreportablePositionsShort)[2:(nrow(x)-1)],main='NonReportable Long changes (t) and log price changes (t-1)',T,xlab='log(price) change (t-1)',ylab = 'Long Position change (t)')
   sPlot(diff(log(x$price1))[2:(nrow(x)-1)],diff(x$NonreportablePositionsLong-x$NonreportablePositionsShort)[1:(nrow(x)-2)],main='NonReportable Long changes (t-1) and log price changes (t)',T,xlab='log(price) change (t)',ylab = 'Long Position change (t-1)')
   
-  # äëèííûå/êîðîòêèå ïîçèöèè è öåíû
+  # long/short open interests and prices
   par(mfrow = c(2,3))
   
   sPlot(diff(log(x$price1)),diff(x$NoncommercialLong),main='NonCommerical Long changes (t) and log price changes (t)',T,xlab='log(price) change (t)',ylab = 'Long Position change (t)')
@@ -238,7 +239,6 @@ scatterPlots <- function(x){
   sPlot(diff(log(x$price1))[1:(nrow(x)-2)],diff(x$NonreportablePositionsShort)[2:(nrow(x)-1)],main='NonReportable Short changes (t) and log price changes (t-1)',T,xlab='log(price) change (t-1)',ylab = 'Short Position change (t)')
   sPlot(diff(log(x$price1))[2:(nrow(x)-1)],diff(x$NonreportablePositionsShort)[1:(nrow(x)-2)],main='NonReportable Short changes (t-1) and log price changes (t)',T,xlab='log(price) change (t)',ylab = 'Short Position change (t-1)')
   
-  # äëèííûå vs êîðîòêèå ïîçèöèè
   par(mfrow = c(1,3))
   
   sPlot(diff(x$CommercialLong),diff(x$CommercialShort),main='Commercial Long & Short changes weekly',smooth = T,line = T,xlab='Long',ylab='Short',square = T)
@@ -255,9 +255,9 @@ scatterPlots <- function(x){
 
 import_data <- function(load_prev_result=T,addCountables=F){
   if (load_prev_result == F){
-    sourceData <- read.xlsx("OIL data export.xlsx",sheetIndex=1)[1:3922,] #3986 - êîë-âî ïîëíûõ ñòðîê â ôàéëå ñ äàííûìè, áåç ó÷¸òà çàãîëîâêà # 2.5m
+    sourceData <- read.xlsx("OIL data export.xlsx",sheetIndex=1)[1:3922,] #3986 - num of full strings in the file, without header # 2.5m
     
-    # äàëåå â sourceData âûäåëÿþòñÿ òîëüêî ïðåäñòàâèòåëè êàæäîé íåäåëè (âòîðíèê è) ïåðåèìåíîâûâàþòñÿ ñòîëáöû
+    # gathering 1 observation from each week, columns renaming
     
     sourceData$year<-as.numeric(format(sourceData$date,'%Y'))
     sourceData$weekNum<-as.numeric(format(sourceData$date,'%U'))
@@ -274,14 +274,17 @@ import_data <- function(load_prev_result=T,addCountables=F){
       data <- rbind(data,sourceData[t,])
     }
     
-    # øëèôîâêà
     data <- data[1:821,c(1:21,27:31,34:36)]
     colnames(data)[1:13] <- c("date","OI1","OI3","OI4","price1","price3","price4","supplyNonOPEC","supplyOPEC","supplyWorld","demandWorld","supplyUS","demandUS")
     
     #0.6m
-    write.xlsx(data,"weeklyDataFromR.xlsx")
+    write.csv(data,"weeklyDataFromR.csv")
   }
   else {
+    # unlist doesn't help, horrible plots( but the best thing that partly helped: data.frame(sapply(x_source,c))
+    #data <- read.csv('weeklyDataFromR.csv')[,-1]
+    #data$weekDay<-weekdays(as.Date(data$date),abbreviate = T)
+  
     data <- read.xlsx("weeklyDataFromR.xlsx",sheetIndex = 1)
     data <- data[,2:ncol(data)]
     data$weekDay<-weekdays(data$date,abbreviate = T)
@@ -291,12 +294,214 @@ import_data <- function(load_prev_result=T,addCountables=F){
 }
 
 
-## Create a formula for a model with a large number of variables:
-#xnam <- paste0("x", 1:25)
-#(fmla <- as.formula(paste("y ~ ", paste(xnam, collapse= "+"))))
-
-variablesException <- function(rx1){
+variablesException <- function(rx1,normalize=T){
+  if (normalize) rx1 <- normalizeM(rx1)
   ols <- lm(rx1$d_disPfut ~ ., data = rx1)
   step.back <- step(ols, direction = "backward", trace = 0) 
   list(summary1=summary(ols),summary2=summary(step.back),AIC=extractAIC(step.back),ols=ols,step.back=step.back)
+}
+
+m1 <- function(x) sum(abs(x))/length(x)
+m2 <- function(x) sqrt(sum(x^2))/length(x)
+m <- function(x) list(m1=m1(x),m2=m2(x))
+
+x_coef <- function(x,coef){
+  x2 <- cbind(1,x)
+  for (i in 1:ncol(x2)) x2[,i]<-x2[,i]*coef[i]
+  y <- x2[,1]
+  for (i in 2:ncol(x2)) y<-y+x2[,i]
+  list(x=x2,y=y)
+}
+
+nm <- function(x) cbind(1:ncol(x),colnames(x))
+w <- function(x,var) {
+  res <- NULL
+  for (i in 1:length(var)) res <- c(res,sum((1:length(x))*(names(x)==var[i])))
+  res
+}
+
+vif_test<-function(rx){
+  res <- matrix(,0,ncol(rx))
+  colnames(res) <- colnames(rx)
+  for (i in 1:ncol(rx)) { 
+    t <- vif(lm(rx[,i]~.,data=rx[,-i]))
+    if ((i>1) && (i<ncol(rx))) t <- c(t[1:(i-1)],0,t[i:length(t)])
+    if (i==1) t<-c(0,t)
+    if (i==ncol(rx)) t<-c(t,0)
+    res <- rbind(res,t)
+  }
+  rownames(res) <- colnames(rx)
+  image(1:ncol(rx),1:ncol(rx),res,col = terrain.colors(10000))
+  r <- (which.max(res)-1) %% ncol(rx) + 1; c <- (which.max(res)-1) %/% ncol(rx) + 1
+  cat("max V = ",max(res),' in (',r,';',c,')\n')
+  cat("max V = ",max(res),' in (',colnames(rx)[r],'; ',colnames(rx)[c],')\n')
+  res
+}
+
+
+# moving window - fixed model
+movingFixed <- function(rx,dates,years=5,plotEst=T,plotPval=T,par=c(2,2),progressBar=F){
+  
+  # prework
+  size_total <- nrow(rx)
+  size_window <- years   *   (365 %/% 7) # N years
+  cn <- colnames(rx)
+  
+  dates <- dates[(length(dates)-size_total+size_window):length(dates)]
+  len <- NULL
+  coef.estimates <- matrix(,nrow=0,ncol=ncol(rx)); colnames(coef.estimates) <- cn
+  coef.pvalues <- matrix(,nrow=0,ncol=ncol(rx)); colnames(coef.pvalues) <- cn
+  
+  # coefficients calculating
+  for (i in 1:(size_total - size_window + 1)){
+    nrx <- rx[i:(i + size_window - 1),]
+    model <- lm(nrx$d_disPfut ~ ., data = nrx)
+    coeff <- coef(summary(model))[,c(1,4)]
+    if (length(coeff)==2){
+      temp.coef.estimates <- rep(NA,ncol(rx))
+      temp.coef.pvalues <- rep(NA,ncol(rx))
+      temp.len <- 1
+    }
+    else
+    {
+      temp.coef.estimates <- NULL
+      temp.coef.pvalues <- NULL
+      for (j in 1:ncol(rx)){
+        temp.coef.estimates[j] <- coeff[,1][cn[j]]
+        temp.coef.pvalues[j] <- coeff[,2][cn[j]]
+      }
+      temp.len <- nrow(coeff)
+    }
+    coef.estimates <- rbind(coef.estimates,temp.coef.estimates)
+    coef.pvalues <- rbind(coef.pvalues,temp.coef.pvalues)
+    len <- c(len,temp.len)
+    if (progressBar) cat(i,' of ',size_total - size_window + 1,'completed\n')
+    
+  }
+  
+  # plots of estimation and p-values, color means meaningful
+  par(mfrow = par)
+  for (j in 1:ncol(rx)) 
+    if (sum(1-is.na(coef.estimates[,cn[j]])) > 0){
+      tmp <- (coef.pvalues[,cn[j]]<=0.05)
+      
+      if (plotEst){
+        mcm <- coef.estimates[,cn[j]]; mcm[tmp] <- NA
+        mcp <- coef.estimates[,cn[j]]; mcp[!tmp] <- NA
+        plot(dates,mcp,col='green',main=paste0(cn[j],' est.'), ylim=c(min(coef.estimates[,cn[j]],na.rm = T),max(coef.estimates[,cn[j]],na.rm = T)), ylab = 'value' )    
+        points(dates,mcm,col='red', pch=24)
+        lines(dates,rep(0,nrow(coef.estimates)),col='grey',lty=2)        
+      }
+      
+      if (plotPval){
+      mcm <- coef.pvalues[,cn[j]]; mcm[tmp] <- NA
+      mcp <- coef.pvalues[,cn[j]]; mcp[!tmp] <- NA
+      plot(dates,mcp,col='green',main=paste0(cn[j],' p-value'), ylim=c(0,max(coef.pvalues,na.rm = T)), ylab = 'p-value')    
+      points(dates,mcm,col='red', pch=24 )    
+      lines(dates,rep(0.05,nrow(coef.estimates)),col='grey',lty=2)
+      }
+    }
+  par(mfrow = c(1,1))
+}
+
+
+
+### moving window  -  fitting model every iteration
+
+movingStepByStepExcluding <- function(rx,dates,years=5,columns=(2:ncol(rx)),plotEst=T,plotPval=T,par=c(2,2),progressBar=F){
+  # prework
+  size_total <- nrow(rx)
+  size_window <- years   *   (365 %/% 7) # N years
+  cn <- colnames(rx)
+  
+  dates <- dates[(length(dates)-size_total+size_window):length(dates)]
+  len <- NULL
+  coef.estimates <- matrix(,nrow=0,ncol=ncol(rx)); colnames(coef.estimates) <- cn
+  coef.pvalues <- matrix(,nrow=0,ncol=ncol(rx)); colnames(coef.pvalues) <- cn
+  
+  # interesting for plotting regressors
+  inm <- columns
+  
+  # coefficients calculating
+  for (i in 1:(size_total - size_window + 1)){
+    nrx <- rx[i:(i + size_window - 1),]
+    model <- variablesException(normalizeM(nrx))$step.back
+    coeff <- coef(summary(model))[,c(1,4)]
+    if (length(coeff)==2){
+      temp.coef.estimates <- rep(NA,ncol(rx))
+      temp.coef.pvalues <- rep(NA,ncol(rx))
+      temp.len <- 1
+    }
+    else
+    {
+      temp.coef.estimates <- NULL
+      temp.coef.pvalues <- NULL
+      for (j in 1:ncol(rx)){
+        temp.coef.estimates[j] <- coeff[,1][cn[j]]
+        temp.coef.pvalues[j] <- coeff[,2][cn[j]]
+      }
+      temp.len <- nrow(coeff)
+    }
+    coef.estimates <- rbind(coef.estimates,temp.coef.estimates)
+    coef.pvalues <- rbind(coef.pvalues,temp.coef.pvalues)
+    len <- c(len,temp.len)
+    if (progressBar) cat(i,' of ',size_total - size_window + 1,'completed\n')
+  }
+    
+  # plot of variables number (with constant and not meaningful variables)
+  par(mfrow = c(1,2))
+  plot(dates,len,ylim=c(0,max(len)),main=paste0('Number of variables in best regression on last ',size_window,' weeks'),ylab='# variables')
+  lines(dates,rep(mean(len),length(len)),col='red',lty=2)
+  hist(len,main='Number of variables',xlab='')
+  par(mfrow = c(1,1))
+  
+  # plot of estimations and p-values, color means meaningul
+  par(mfrow = par)
+  for (j in inm) 
+    if (sum(1-is.na(coef.estimates[,cn[j]])) > 0){
+      tmp <- (coef.pvalues[,cn[j]]<=0.05)
+      
+      if (plotEst){
+        mcm <- coef.estimates[,cn[j]]; mcm[tmp] <- NA
+        mcp <- coef.estimates[,cn[j]]; mcp[!tmp] <- NA
+        plot(dates,mcp,col='green',main=paste0(cn[j],' est.'), ylim=c(min(coef.estimates[,cn[j]],na.rm = T),max(coef.estimates[,cn[j]],na.rm = T)), ylab = 'value' )    
+        points(dates,mcm,col='red', pch=24)
+        lines(dates,rep(0,nrow(coef.estimates)),col='grey',lty=2)
+      }
+      
+      if (plotPval){
+        mcm <- coef.pvalues[,cn[j]]; mcm[tmp] <- NA
+        mcp <- coef.pvalues[,cn[j]]; mcp[!tmp] <- NA
+        plot(dates,mcp,col='green',main=paste0(cn[j],' p-value'), ylim=c(0,max(coef.pvalues,na.rm = T)), ylab = 'p-value')    
+        points(dates,mcm,col='red', pch=24 )    
+        lines(dates,rep(0.05,nrow(coef.estimates)),col='grey',lty=2)
+      }
+    }
+  par(mfrow = c(1,1))
+}
+
+
+# check every combination of regressions for amount of significant regressors (without constant)
+# must be at least 1 fixed included variable, not 1st; 1st column - y
+lm_check <- function(rx,vfixed,progressBar=T,includeConst=T){
+  nvar <- ncol(rx)-1-length(vfixed)
+  vnew <- (1:ncol(rx))[-vfixed][-1]
+  ordr <- order(c(vfixed,vnew))
+  if (includeConst==T) q<-1 else q<-0
+  
+  rec <- NULL
+  for (i in 0:(2^nvar-1)) rec <- rbind(rec,as.integer(intToBits(i))[1:nvar])
+  rec <- cbind(0,cbind(matrix(1,2^nvar,length(vfixed)),rec)[,ordr])
+  head(rec)
+  
+  nsign <- NULL
+  for (i in 1:nrow(rec)){
+    fmla <- paste0("rx[,1]~",q)
+    for (j in 1:ncol(rec)) if (rec[i,j]==1) fmla <- paste0(fmla,'+rx[,',j,']')
+    model <- summary(lm(as.formula(fmla)))
+    nsign <- c(nsign,sum(coef(model)[-1,4]<=0.05)) # you can count smth else based on this code here
+    if (progressBar) cat(i,' out of ',nrow(rec),' completed\n')
+  }  
+  plot(nsign,ylab='# significant regressors (without const)',xlab='Number of experiment',main='# significant regressors in different models')
+  list(rec=rec,nsign=nsign)
 }
